@@ -18,6 +18,9 @@ let subjects = [];
 let topics = [];
 let folders = [];
 let materials = [];
+let currentQuiz = null;
+let currentQuizIndex = 0;
+let quizAnswers = {};
 
 // Initialize grade selection page
 document.addEventListener('DOMContentLoaded', function() {
@@ -221,20 +224,21 @@ async function loadFolders(topicId) {
 }
 
 // Load materials based on selected folder
-async function loadMaterials(folderId) {
+async function loadMaterials(folderId = currentSelection.folder) {
     try {
         showLoading();
+        const selectedFolderId = typeof folderId === 'string' ? folderId : currentSelection.folder;
         
         // Debug: Log the current selections and folder
         console.log('Loading materials with selections:', currentSelection);
-        console.log('Folder ID:', folderId);
+        console.log('Folder ID:', selectedFolderId);
         
         // Get type filter value
         const typeFilter = document.getElementById('material-type-filter');
         const selectedType = typeFilter ? typeFilter.value : '';
         
         // Build API URL with filters for students
-        let apiUrl = `${API_BASE}/materials?phase=${currentSelection.phase}&grade=${currentSelection.grade}&subject=${currentSelection.subject}&term=${currentSelection.term}&folder=${folderId}&targetAudience=student&t=${Date.now()}`;
+        let apiUrl = `${API_BASE}/materials?phase=${currentSelection.phase}&grade=${currentSelection.grade}&subject=${currentSelection.subject}&term=${currentSelection.term}&folder=${selectedFolderId}&targetAudience=student&t=${Date.now()}`;
         
         // Add type filter if selected
         if (selectedType) {
@@ -248,7 +252,23 @@ async function loadMaterials(folderId) {
         console.log('Fetch response status:', response.status);
         if (!response.ok) throw new Error('Failed to load materials');
         
-        materials = await response.json();
+        const loadedMaterials = await response.json();
+        let loadedQuizzes = [];
+
+        if (!selectedType || selectedType === 'quiz') {
+            const quizUrl = `${API_BASE}/quizzes?phase=${currentSelection.phase}&grade=${currentSelection.grade}&subject=${currentSelection.subject}&term=${currentSelection.term}&folder=${selectedFolderId}&targetAudience=student&t=${Date.now()}`;
+            const quizResponse = await fetch(quizUrl);
+            loadedQuizzes = quizResponse.ok ? await quizResponse.json() : [];
+        }
+
+        const materialMap = new Map();
+        [...loadedMaterials, ...loadedQuizzes].forEach(item => {
+            if (!selectedType || item.type === selectedType) {
+                materialMap.set(item._id, item);
+            }
+        });
+
+        materials = Array.from(materialMap.values());
         console.log('Materials loaded:', materials.length, 'materials');
         
         displayMaterials();
@@ -457,6 +477,10 @@ function createTopicCard(topic) {
 
 // Create material card
 function createMaterialCard(material) {
+    if (material.type === 'quiz') {
+        return createQuizCard(material);
+    }
+
     const card = document.createElement('div');
     card.className = 'content-card';
     card.onclick = () => openMaterial(material);
@@ -483,6 +507,33 @@ function createMaterialCard(material) {
         </div>
     `;
     
+    return card;
+}
+
+function createQuizCard(quiz) {
+    const card = document.createElement('div');
+    card.className = 'content-card quiz-card';
+
+    const questionCount = Array.isArray(quiz.questions) ? quiz.questions.length : 0;
+    const duration = quiz.duration ? `${quiz.duration} min` : 'Untimed';
+    const gradeLabel = quiz.grade && (quiz.grade.value || quiz.grade.name) ? (quiz.grade.value || quiz.grade.name) : 'Current grade';
+
+    card.innerHTML = `
+        <div class="content-icon">
+            <i class="fas fa-clipboard-question"></i>
+        </div>
+        <h3 class="content-title">${escapeHtml(quiz.title || 'Untitled Quiz')}</h3>
+        <p class="content-description">${escapeHtml(quiz.description || 'Attempt this quiz when you are ready.')}</p>
+        <div class="quiz-activity-meta">
+            <span><i class="fas fa-list-ol"></i> ${questionCount} question${questionCount === 1 ? '' : 's'}</span>
+            <span><i class="fas fa-clock"></i> ${duration}</span>
+            <span><i class="fas fa-graduation-cap"></i> ${escapeHtml(gradeLabel)}</span>
+        </div>
+        <button type="button" class="quiz-attempt-button" onclick="startQuiz('${quiz._id}')">
+            <i class="fas fa-play"></i> Attempt quiz now
+        </button>
+    `;
+
     return card;
 }
 
@@ -522,6 +573,11 @@ function selectFolder(folderId, folderName) {
 
 // Open material for viewing
 function openMaterial(material) {
+    if (material.type === 'quiz') {
+        startQuiz(material._id);
+        return;
+    }
+
     if (material.url) {
         window.open(material.url, '_blank');
     } else if (material.filePath) {
@@ -531,6 +587,288 @@ function openMaterial(material) {
     } else {
         showError('Material file not found');
     }
+}
+
+async function startQuiz(quizId) {
+    try {
+        showLoading();
+        const response = await fetch(`${API_BASE}/quizzes/${quizId}`);
+        if (!response.ok) throw new Error('Failed to load quiz');
+
+        currentQuiz = await response.json();
+        currentQuizIndex = 0;
+        quizAnswers = {};
+        hideLoading();
+        showQuizIntro();
+    } catch (error) {
+        console.error('Error loading quiz:', error);
+        hideLoading();
+        showError('Failed to load quiz. Please try again.');
+    }
+}
+
+function showQuizIntro() {
+    const questions = getQuizQuestions();
+    const duration = currentQuiz.duration ? `${currentQuiz.duration} minutes` : 'No time limit';
+    const modal = document.getElementById('quiz-modal');
+    const inner = document.getElementById('quiz-modal-inner');
+
+    inner.innerHTML = `
+        <div class="quiz-moodle-header">
+            <div>
+                <h2>${escapeHtml(currentQuiz.title || 'Quiz')}</h2>
+                <p class="content-description">Quiz activity</p>
+            </div>
+            <button class="quiz-nav-button secondary" onclick="closeQuizModal()">
+                <i class="fas fa-times"></i> Close
+            </button>
+        </div>
+        <div class="quiz-moodle-body">
+            <p>${escapeHtml(currentQuiz.description || 'Complete the questions below and submit your attempt when you are done.')}</p>
+            <div class="quiz-info-table">
+                <div class="quiz-info-row"><strong>Attempts allowed</strong><span>1</span></div>
+                <div class="quiz-info-row"><strong>Time limit</strong><span>${duration}</span></div>
+                <div class="quiz-info-row"><strong>Questions</strong><span>${questions.length}</span></div>
+                <div class="quiz-info-row"><strong>Grading method</strong><span>Highest grade</span></div>
+            </div>
+            <div class="quiz-nav">
+                <button class="quiz-nav-button secondary" onclick="closeQuizModal()">Cancel</button>
+                <button class="quiz-nav-button primary" onclick="beginQuizAttempt()">Attempt quiz now</button>
+            </div>
+        </div>
+    `;
+
+    modal.style.display = 'flex';
+}
+
+function beginQuizAttempt() {
+    currentQuizIndex = 0;
+    renderQuizQuestion();
+}
+
+function renderQuizQuestion() {
+    const questions = getQuizQuestions();
+    const question = questions[currentQuizIndex];
+    const inner = document.getElementById('quiz-modal-inner');
+
+    if (!question) {
+        showQuizResults();
+        return;
+    }
+
+    const answers = getQuestionAnswers(question);
+    const selectedAnswer = quizAnswers[currentQuizIndex];
+
+    inner.innerHTML = `
+        <div class="quiz-moodle-header">
+            <div>
+                <h2>${escapeHtml(currentQuiz.title || 'Quiz')}</h2>
+                <p class="content-description">Question ${currentQuizIndex + 1} of ${questions.length}</p>
+            </div>
+            <button class="quiz-nav-button secondary" onclick="closeQuizModal()">
+                <i class="fas fa-times"></i> Close
+            </button>
+        </div>
+        <div class="quiz-moodle-body">
+            <div class="quiz-question-panel">
+                <div class="quiz-question-title">
+                    <span>Question ${currentQuizIndex + 1}</span>
+                    <span>Not yet graded</span>
+                </div>
+                <div class="quiz-question-content">
+                    <p>${escapeHtml(getQuestionText(question))}</p>
+                    <div>
+                        ${answers.map((answer, index) => `
+                            <label class="quiz-answer-option">
+                                <input type="radio" name="quiz-answer" value="${index}" ${selectedAnswer === index ? 'checked' : ''} onchange="selectQuizAnswer(${index})">
+                                <span>${escapeHtml(getAnswerText(answer))}</span>
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+            <div class="quiz-nav">
+                <button class="quiz-nav-button secondary" onclick="previousQuizQuestion()" ${currentQuizIndex === 0 ? 'disabled' : ''}>
+                    <i class="fas fa-arrow-left"></i> Previous page
+                </button>
+                ${currentQuizIndex === questions.length - 1 ? `
+                    <button class="quiz-nav-button primary" onclick="showQuizSummary()">Finish attempt</button>
+                ` : `
+                    <button class="quiz-nav-button primary" onclick="nextQuizQuestion()">Next page <i class="fas fa-arrow-right"></i></button>
+                `}
+            </div>
+        </div>
+    `;
+}
+
+function selectQuizAnswer(answerIndex) {
+    quizAnswers[currentQuizIndex] = answerIndex;
+}
+
+function nextQuizQuestion() {
+    const questions = getQuizQuestions();
+    if (currentQuizIndex < questions.length - 1) {
+        currentQuizIndex++;
+        renderQuizQuestion();
+    }
+}
+
+function previousQuizQuestion() {
+    if (currentQuizIndex > 0) {
+        currentQuizIndex--;
+        renderQuizQuestion();
+    }
+}
+
+function showQuizSummary() {
+    const questions = getQuizQuestions();
+    const answered = Object.keys(quizAnswers).length;
+    const inner = document.getElementById('quiz-modal-inner');
+
+    inner.innerHTML = `
+        <div class="quiz-moodle-header">
+            <div>
+                <h2>Summary of attempt</h2>
+                <p class="content-description">${escapeHtml(currentQuiz.title || 'Quiz')}</p>
+            </div>
+            <button class="quiz-nav-button secondary" onclick="closeQuizModal()">
+                <i class="fas fa-times"></i> Close
+            </button>
+        </div>
+        <div class="quiz-moodle-body">
+            <div class="quiz-info-table">
+                ${questions.map((question, index) => `
+                    <div class="quiz-info-row">
+                        <strong>Question ${index + 1}</strong>
+                        <span>${quizAnswers[index] === undefined ? 'Not yet answered' : 'Answer saved'}</span>
+                    </div>
+                `).join('')}
+            </div>
+            <p>${answered} of ${questions.length} questions answered.</p>
+            <div class="quiz-nav">
+                <button class="quiz-nav-button secondary" onclick="renderQuizQuestion()">Return to attempt</button>
+                <button class="quiz-nav-button primary" onclick="submitQuizAttempt()">Submit all and finish</button>
+            </div>
+        </div>
+    `;
+}
+
+function submitQuizAttempt() {
+    showQuizResults();
+}
+
+function showQuizResults() {
+    const results = calculateQuizResults();
+    const inner = document.getElementById('quiz-modal-inner');
+
+    inner.innerHTML = `
+        <div class="quiz-moodle-header">
+            <div>
+                <h2>Review of attempt</h2>
+                <p class="content-description">${escapeHtml(currentQuiz.title || 'Quiz')}</p>
+            </div>
+            <button class="quiz-nav-button secondary" onclick="closeQuizModal()">
+                <i class="fas fa-times"></i> Close
+            </button>
+        </div>
+        <div class="quiz-moodle-body">
+            <div class="quiz-result-summary">
+                <h3>Grade: ${results.percentage}%</h3>
+                <p>${results.correct} correct, ${results.incorrect} incorrect, ${results.skipped} not answered.</p>
+            </div>
+            ${getQuizQuestions().map((question, index) => renderReviewQuestion(question, index)).join('')}
+            <div class="quiz-nav">
+                <button class="quiz-nav-button primary" onclick="closeQuizModal()">Finish review</button>
+            </div>
+        </div>
+    `;
+}
+
+function renderReviewQuestion(question, index) {
+    const answers = getQuestionAnswers(question);
+    const userAnswer = quizAnswers[index];
+    const correctAnswer = getCorrectAnswerIndex(question);
+    const status = userAnswer === undefined ? 'Not answered' : userAnswer === correctAnswer ? 'Correct' : 'Incorrect';
+
+    return `
+        <div class="quiz-question-panel">
+            <div class="quiz-question-title">
+                <span>Question ${index + 1}</span>
+                <span>${status}</span>
+            </div>
+            <div class="quiz-question-content">
+                <p>${escapeHtml(getQuestionText(question))}</p>
+                ${answers.map((answer, answerIndex) => {
+                    const label = answerIndex === userAnswer ? 'Your answer' : answerIndex === correctAnswer ? 'Correct answer' : '';
+                    return `<div class="quiz-answer-option"><span>${escapeHtml(getAnswerText(answer))}</span>${label ? `<strong>${label}</strong>` : ''}</div>`;
+                }).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function calculateQuizResults() {
+    const questions = getQuizQuestions();
+    let correct = 0;
+    let skipped = 0;
+
+    questions.forEach((question, index) => {
+        if (quizAnswers[index] === undefined) {
+            skipped++;
+        } else if (quizAnswers[index] === getCorrectAnswerIndex(question)) {
+            correct++;
+        }
+    });
+
+    const total = questions.length || 1;
+    const incorrect = total - correct - skipped;
+    return {
+        correct,
+        incorrect,
+        skipped,
+        total,
+        percentage: Math.round((correct / total) * 100)
+    };
+}
+
+function closeQuizModal() {
+    document.getElementById('quiz-modal').style.display = 'none';
+    currentQuiz = null;
+    currentQuizIndex = 0;
+    quizAnswers = {};
+}
+
+function getQuizQuestions() {
+    return Array.isArray(currentQuiz && currentQuiz.questions) ? currentQuiz.questions : [];
+}
+
+function getQuestionText(question) {
+    return question.question || question.text || 'Question';
+}
+
+function getQuestionAnswers(question) {
+    return Array.isArray(question.answers) ? question.answers : (Array.isArray(question.options) ? question.options : []);
+}
+
+function getAnswerText(answer) {
+    return typeof answer === 'string' ? answer : (answer.text || answer.answer || '');
+}
+
+function getCorrectAnswerIndex(question) {
+    if (question.correctAnswer !== undefined) return Number(question.correctAnswer);
+    if (question.correct !== undefined) return Number(question.correct);
+    const answers = getQuestionAnswers(question);
+    const foundIndex = answers.findIndex(answer => answer && typeof answer === 'object' && answer.isCorrect);
+    return foundIndex >= 0 ? foundIndex : -1;
+}
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
 // Helper functions
@@ -689,7 +1027,7 @@ function updateContentHeader(title, description) {
         const typeFilter = document.getElementById('material-type-filter');
         if (typeFilter && !typeFilter.hasAttribute('data-listener')) {
             typeFilter.setAttribute('data-listener', 'true');
-            typeFilter.addEventListener('change', loadMaterials);
+            typeFilter.addEventListener('change', () => loadMaterials(currentSelection.folder));
         }
     } else {
         filterContainer.style.display = 'none';

@@ -203,6 +203,27 @@ router.post('/bulk', async (req, res) => {
   }
 });
 
+// GET /api/quizzes/:id - Get single quiz
+router.get('/:id', async (req, res) => {
+  try {
+    const quiz = await Material.findOne({ _id: req.params.id, type: 'quiz' })
+      .populate('grade')
+      .populate('categoryId')
+      .populate('subjectId')
+      .populate('topicId')
+      .populate('folderId');
+
+    if (!quiz) {
+      return res.status(404).json({ error: 'Quiz not found' });
+    }
+
+    res.json(quiz);
+  } catch (err) {
+    console.error('Error fetching quiz:', err);
+    res.status(500).json({ error: 'Failed to fetch quiz' });
+  }
+});
+
 // PUT /api/quizzes/:id - Update quiz
 router.put('/:id', async (req, res) => {
   try {
