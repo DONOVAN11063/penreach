@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Materials Loading</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .debug { background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .material { border: 1px solid #ccc; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .material h3 { margin: 0 0 10px 0; color: #333; }
+        .material p { margin: 5px 0; }
+        .btn { background: #667eea; color: white; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; display: inline-block; margin-top: 10px; }
+        .btn:hover { background: #5a6fd8; }
+    </style>
+</head>
+<body>
+    <h1>Debug Materials Loading</h1>
+    <button onclick="testMaterialsLoading()">Test Materials Loading</button>
+    <div id="debug-info"></div>
+    <div id="materials-container"></div>
+
+    <script>
+        async function testMaterialsLoading() {
+            const debugDiv = document.getElementById('debug-info');
+            const container = document.getElementById('materials-container');
+            
+            debugDiv.innerHTML = '<div class="debug">Starting materials loading test...</div>';
+            container.innerHTML = '';
+            
+            try {
+                debugDiv.innerHTML += '<div class="debug">Fetching materials from /api/materials...</div>';
+                
+                const response = await fetch('/api/materials');
+                debugDiv.innerHTML += `<div class="debug">Response status: ${response.status}</div>`;
+                
+                if (response.ok) {
+                    const materials = await response.json();
+                    debugDiv.innerHTML += `<div class="debug">Materials loaded: ${materials.length} items</div>`;
+                    debugDiv.innerHTML += `<div class="debug">Materials data: ${JSON.stringify(materials, null, 2)}</div>`;
+                    
+                    if (materials.length === 0) {
+                        container.innerHTML = '<p>No materials found in database.</p>';
+                    } else {
+                        container.innerHTML = materials.map((material, index) => `
+                            <div class="material">
+                                <h3>${index + 1}. ${material.title}</h3>
+                                <p><strong>Type:</strong> ${material.type}</p>
+                                <p><strong>Phase:</strong> ${material.phase || 'N/A'}</p>
+                                <p><strong>Grade:</strong> ${material.grade ? (material.grade.value || 'Grade Available') : 'N/A'}</p>
+                                <p><strong>Description:</strong> ${material.description || 'No description'}</p>
+                                <p><strong>URL:</strong> ${material.url || 'No URL'}</p>
+                                ${material.url ? `<a href="${material.url}" target="_blank" class="btn">Open ${material.type}</a>` : ''}
+                            </div>
+                        `).join('');
+                    }
+                } else {
+                    debugDiv.innerHTML += `<div class="debug">Error: ${response.statusText}</div>`;
+                    container.innerHTML = '<p>Error loading materials.</p>';
+                }
+                
+            } catch (error) {
+                debugDiv.innerHTML += `<div class="debug">Error: ${error.message}</div>`;
+                container.innerHTML = '<p>Error loading materials.</p>';
+            }
+        }
+        
+        // Auto-test when page loads
+        window.addEventListener('load', testMaterialsLoading);
+    </script>
+</body>
+</html>

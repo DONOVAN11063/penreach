@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Materials Loading</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .material { border: 1px solid #ccc; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .material h3 { margin: 0 0 10px 0; color: #333; }
+        .material p { margin: 5px 0; }
+        .btn { background: #667eea; color: white; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; display: inline-block; margin-top: 10px; }
+        .btn:hover { background: #5a6fd8; }
+    </style>
+</head>
+<body>
+    <h1>Materials from Database</h1>
+    <button onclick="loadMaterials()">Load Materials</button>
+    <div id="materials-container"></div>
+
+    <script>
+        async function loadMaterials() {
+            const container = document.getElementById('materials-container');
+            container.innerHTML = '<p>Loading materials...</p>';
+            
+            try {
+                // Fetch all materials from the materials collection
+                const materialsResponse = await fetch('/api/materials');
+                
+                const materials = [];
+                
+                if (materialsResponse.ok) {
+                    const allMaterials = await materialsResponse.json();
+                    console.log('All materials:', allMaterials);
+                    
+                    // Filter by type
+                    const documents = allMaterials.filter(m => m.type === 'document');
+                    const videos = allMaterials.filter(m => m.type === 'video');
+                    const quizzes = allMaterials.filter(m => m.type === 'quiz');
+                    
+                    console.log('Documents:', documents);
+                    console.log('Videos:', videos);
+                    console.log('Quizzes:', quizzes);
+                    
+                    materials.push(...documents, ...videos, ...quizzes);
+                }
+                
+                console.log('All materials:', materials);
+                
+                if (materials.length === 0) {
+                    container.innerHTML = '<p>No materials found in database.</p>';
+                } else {
+                    container.innerHTML = materials.map(material => `
+                        <div class="material">
+                            <h3>${material.title}</h3>
+                            <p><strong>Type:</strong> ${material.type}</p>
+                            <p><strong>Phase:</strong> ${material.phase || 'N/A'}</p>
+                            <p><strong>Grade:</strong> ${material.grade ? (material.grade.value || 'Grade Available') : 'N/A'}</p>
+                            <p><strong>Description:</strong> ${material.description || 'No description'}</p>
+                            ${material.url ? `<a href="${material.url}" target="_blank" class="btn">Open ${material.type}</a>` : ''}
+                            ${material.type === 'quiz' ? `<button class="btn" onclick="alert('Quiz ID: ${material._id}')">Start Quiz</button>` : ''}
+                        </div>
+                    `).join('');
+                }
+                
+            } catch (error) {
+                console.error('Error loading materials:', error);
+                container.innerHTML = '<p>Error loading materials: ' + error.message + '</p>';
+            }
+        }
+        
+        // Auto-load materials when page loads
+        window.addEventListener('load', loadMaterials);
+    </script>
+</body>
+</html>
