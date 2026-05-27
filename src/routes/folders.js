@@ -12,7 +12,13 @@ router.get('/', async (req, res) => {
       return res.status(400).json({ error: 'targetAudience parameter is required (student or teacher)' });
     }
     
-    let filter = { targetAudience };
+    let filter = {
+      $or: [
+        { targetAudience },
+        { targetAudience: { $exists: false } },
+        { targetAudience: null }
+      ]
+    };
     
     if (grade) filter.grade = grade;
     if (subject) filter.subject = subject;
@@ -42,7 +48,13 @@ router.get('/student', async (req, res) => {
       return res.status(400).json({ error: 'targetAudience parameter is required (student or teacher)' });
     }
     
-    let filter = { targetAudience };
+    let filter = {
+      $or: [
+        { targetAudience },
+        { targetAudience: { $exists: false } },
+        { targetAudience: null }
+      ]
+    };
     
     if (grade) filter.grade = grade;
     if (subject) filter.subject = subject;

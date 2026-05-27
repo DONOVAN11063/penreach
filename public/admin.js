@@ -552,13 +552,27 @@ function setupDocumentFormCascading() {
     // Don't load folders initially - they will be loaded based on topic selection
 }
 
-async function loadFoldersForDropdown(folderSelect, topicId = null) {
+async function loadFoldersForDropdown(folderSelect, filters = null) {
     try {
         const selectedRole = localStorage.getItem('selectedAdminRole');
         const targetAudience = selectedRole === 'teachers-admin' ? 'teacher' : 'student';
-        let url = `/api/folders?targetAudience=${targetAudience}`;
-        if (topicId) {
-            url += `&topic=${topicId}`;
+        const params = new URLSearchParams({ targetAudience });
+        const folderFilters = typeof filters === 'string' ? { topic: filters } : (filters || {});
+
+        Object.entries(folderFilters).forEach(([key, value]) => {
+            if (value) {
+                params.append(key, value);
+            }
+        });
+
+        const url = `/api/folders?${params.toString()}`;
+        const filterLabel = Object.entries(folderFilters)
+            .filter(([, value]) => value)
+            .map(([key, value]) => `${key}: ${value}`)
+            .join(', ') || 'all';
+
+        if (!folderSelect) {
+            return;
         }
         
         const response = await fetch(url);
@@ -578,7 +592,7 @@ async function loadFoldersForDropdown(folderSelect, topicId = null) {
             folderSelect.appendChild(option);
         });
         
-        console.log(`Loaded ${folders.length} folders for topic: ${topicId}`);
+        console.log(`Loaded ${folders.length} folders for ${filterLabel}`);
     } catch (error) {
         console.error('Error loading folders:', error);
         folderSelect.innerHTML = '<option value="">Error loading folders</option>';
@@ -1163,7 +1177,22 @@ async function loadVideos() {
 async function handleQuizUpload(e) {
     e.preventDefault();
     
-    const formData = new FormData(e.target);
+    const formData = new FormData();
+    const titleInput = document.getElementById('quiz-title');
+    const descriptionInput = document.getElementById('quiz-description');
+    const phaseSelect = document.getElementById('quiz-phase');
+    const gradeSelect = document.getElementById('quiz-grade');
+    const categorySelect = document.getElementById('quiz-category');
+    const subjectSelect = document.getElementById('quiz-subject');
+    const termSelect = document.getElementById('quiz-term');
+    const topicSelect = document.getElementById('quiz-topic');
+    const folderSelect = document.getElementById('quiz-folder');
+    const durationInput = document.getElementById('quiz-duration');
+    
+    if (!titleInput.value || !phaseSelect.value || !gradeSelect.value || !categorySelect.value || !subjectSelect.value || !termSelect.value || !topicSelect.value || !folderSelect.value) {
+        showToast('error', 'Error', 'Please select phase, grade, category, subject, term, topic, and folder');
+        return;
+    }
     
     // Collect questions from the improved form
     const questions = collectQuizQuestions();
@@ -1172,7 +1201,18 @@ async function handleQuizUpload(e) {
         return;
     }
     
-    // Add questions as JSON
+    formData.append('title', titleInput.value);
+    formData.append('description', descriptionInput.value || '');
+    formData.append('phase', phaseSelect.value);
+    formData.append('grade', gradeSelect.value);
+    formData.append('category', categorySelect.value);
+    formData.append('subject', subjectSelect.value);
+    formData.append('term', termSelect.value);
+    formData.append('topic', topicSelect.value);
+    formData.append('folderId', folderSelect.value);
+    if (durationInput.value) {
+        formData.append('duration', durationInput.value);
+    }
     formData.append('questions', JSON.stringify(questions));
     
     // Ensure targetAudience is included from localStorage
@@ -1195,6 +1235,9 @@ async function handleQuizUpload(e) {
             e.target.reset();
             document.getElementById('questions-container').innerHTML = '';
             addQuizQuestion(); // Add initial question
+            if (folderSelect) {
+                folderSelect.innerHTML = '<option value="">Select Folder</option>';
+            }
             await loadQuizzes();
         } else {
             showToast('error', 'Error', result.error || 'Quiz creation failed');
@@ -2760,6 +2803,8 @@ async function saveSimpleModal() {
         const gradeEl = document.getElementById(`${prefix}-grade`);
         const subjectEl = document.getElementById(`${prefix}-subject`);
         const topicEl = document.getElementById(`${prefix}-topic`);
+        const termEl = document.getElementById(`${prefix}-term`);
+        const orderEl = document.getElementById(`${prefix}-order`);
         
         // Check if elements exist
         if (!nameEl || !descriptionEl || !phaseEl || !gradeEl || !subjectEl || !topicEl) {
@@ -2781,6 +2826,8 @@ async function saveSimpleModal() {
         data.grade = gradeEl.value;
         data.subject = subjectEl.value;
         data.topic = topicEl.value;
+        data.term = termEl ? termEl.value : null;
+        data.order = orderEl ? parseInt(orderEl.value || '0', 10) : 0;
         // Add targetAudience based on selected admin role
         const selectedRole = localStorage.getItem('selectedAdminRole');
         data.targetAudience = selectedRole === 'teachers-admin' ? 'teacher' : 'student';
@@ -2788,13 +2835,14 @@ async function saveSimpleModal() {
         console.log('Folder data being saved:', data);
         
         // Check if required fields are filled
-        if (!data.name || !data.grade || !data.subject || !data.phase || !data.topic) {
+        if (!data.name || !data.grade || !data.subject || !data.phase || !data.topic || !data.term) {
             console.error('Missing required field:', {
                 name: !!data.name,
                 grade: !!data.grade,
                 subject: !!data.subject,
                 phase: !!data.phase,
-                topic: !!data.topic
+                topic: !!data.topic,
+                term: !!data.term
             });
             showToast('error', 'Error', 'Please fill in all required fields');
             return;
@@ -3656,9 +3704,9 @@ function setupQuizFormDependencies() {
     if (phaseSelect) {
         phaseSelect.addEventListener('change', async function() {
             await loadGradesByPhase(this.value, gradeSelect);
-            subjectSelect.innerHTML = '<option value="">Select Subject</option>';
-            topicSelect.innerHTML = '<option value="">Select Topic</option>';
-            folderSelect.innerHTML = '<option value="">Select Folder</option>';
+            if (subjectSelect) subjectSelect.innerHTML = '<option value="">Select Subject</option>';
+            if (topicSelect) topicSelect.innerHTML = '<option value="">Select Topic</option>';
+            if (folderSelect) folderSelect.innerHTML = '<option value="">Select Folder</option>';
             // Reload subjects
             await loadSubjectsForDropdown(subjectSelect);
         });
@@ -3668,9 +3716,9 @@ function setupQuizFormDependencies() {
         gradeSelect.addEventListener('change', async function() {
             // Reload categories for the selected grade
             await loadCategoriesForDropdown(categorySelect);
-            subjectSelect.innerHTML = '<option value="">Select Subject</option>';
-            topicSelect.innerHTML = '<option value="">Select Topic</option>';
-            folderSelect.innerHTML = '<option value="">Select Folder</option>';
+            if (subjectSelect) subjectSelect.innerHTML = '<option value="">Select Subject</option>';
+            if (topicSelect) topicSelect.innerHTML = '<option value="">Select Topic</option>';
+            if (folderSelect) folderSelect.innerHTML = '<option value="">Select Folder</option>';
             // Reload subjects
             await loadSubjectsForDropdown(subjectSelect);
         });
@@ -3678,8 +3726,11 @@ function setupQuizFormDependencies() {
 
     if (categorySelect) {
         categorySelect.addEventListener('change', async function() {
-            topicSelect.innerHTML = '<option value="">Select Topic</option>';
-            folderSelect.innerHTML = '<option value="">Select Folder</option>';
+            if (topicSelect) topicSelect.innerHTML = '<option value="">Select Topic</option>';
+            if (folderSelect) folderSelect.innerHTML = '<option value="">Select Folder</option>';
+            if (subjectSelect && this.value) {
+                await loadSubjectsByCategory(this.value, subjectSelect);
+            }
         });
     }
 
@@ -3692,7 +3743,7 @@ function setupQuizFormDependencies() {
             } else {
                 topicSelect.innerHTML = '<option value="">Select Topic</option>';
             }
-            folderSelect.innerHTML = '<option value="">Select Folder</option>';
+            if (folderSelect) folderSelect.innerHTML = '<option value="">Select Folder</option>';
         });
     }
 
@@ -3700,7 +3751,7 @@ function setupQuizFormDependencies() {
         subjectSelect.addEventListener('change', async function() {
             const selectedTerm = termSelect ? termSelect.value : '';
             await loadTopicsForSubject(this.value, topicSelect, selectedTerm);
-            folderSelect.innerHTML = '<option value="">Select Folder</option>';
+            if (folderSelect) folderSelect.innerHTML = '<option value="">Select Folder</option>';
         });
     }
 
@@ -3708,7 +3759,13 @@ function setupQuizFormDependencies() {
         topicSelect.addEventListener('change', async function() {
             // Load folders for the selected topic
             if (this.value && folderSelect) {
-                await loadFoldersForTopic(this.value, folderSelect);
+                await loadFoldersForDropdown(folderSelect, {
+                    phase: phaseSelect ? phaseSelect.value : '',
+                    grade: gradeSelect ? gradeSelect.value : '',
+                    subject: subjectSelect ? subjectSelect.value : '',
+                    term: termSelect ? termSelect.value : '',
+                    topic: this.value
+                });
             } else if (folderSelect) {
                 folderSelect.innerHTML = '<option value="">Select Folder</option>';
             }
@@ -3718,7 +3775,7 @@ function setupQuizFormDependencies() {
     if (termSelect) {
         termSelect.addEventListener('change', async function() {
             // Clear folders when term changes
-            folderSelect.innerHTML = '<option value="">Select Folder</option>';
+            if (folderSelect) folderSelect.innerHTML = '<option value="">Select Folder</option>';
         });
     }
 }

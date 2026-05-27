@@ -76,7 +76,10 @@ router.get('/', async (req, res) => {
 // POST /api/quizzes - Create quiz
 router.post('/', upload.single('file'), async (req, res) => {
   try {
-    const { title, description, grade, phase, subject, topic, term, folderId, duration, questions, targetAudience } = req.body;
+    const { title, description, grade, phase, category, subject, topic, term, folderId, duration, targetAudience } = req.body;
+    const questions = typeof req.body.questions === 'string'
+      ? JSON.parse(req.body.questions)
+      : req.body.questions;
     
     // Validate required fields
     if (!title || !grade || !phase) {
@@ -96,6 +99,7 @@ router.post('/', upload.single('file'), async (req, res) => {
     };
     
     // Add optional fields if provided
+    if (category) quizData.categoryId = category;
     if (subject) quizData.subjectId = subject;
     if (topic) quizData.topicId = topic;
     if (folderId) quizData.folderId = folderId;

@@ -74,6 +74,10 @@ const materialSchema = new mongoose.Schema({
 
   description: String,
 
+  duration: Number,
+
+  questions: [mongoose.Schema.Types.Mixed],
+
   url: String,
 
   filePath: String,

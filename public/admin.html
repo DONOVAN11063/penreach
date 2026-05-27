@@ -507,11 +507,38 @@
                                         </div>
                                     </div>
 
-                                    <div class="form-group">
-                                        <label for="quiz-topic">Topic *</label>
-                                        <select id="quiz-topic" required>
-                                            <option value="">Select Topic</option>
-                                        </select>
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="quiz-subject">Subject *</label>
+                                            <select id="quiz-subject" required>
+                                                <option value="">Select Subject</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="quiz-term">Term *</label>
+                                            <select id="quiz-term" required>
+                                                <option value="">Select Term</option>
+                                                <option value="1">Term 1</option>
+                                                <option value="2">Term 2</option>
+                                                <option value="3">Term 3</option>
+                                                <option value="4">Term 4</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="quiz-topic">Topic *</label>
+                                            <select id="quiz-topic" required>
+                                                <option value="">Select Topic</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="quiz-folder">Folder *</label>
+                                            <select id="quiz-folder" required>
+                                                <option value="">Select Folder</option>
+                                            </select>
+                                        </div>
                                     </div>
 
                                     <div class="form-group">
@@ -526,15 +553,7 @@
 
                                     <div class="form-group">
                                         <label for="quiz-questions">Questions</label>
-                                        <div id="questions-container">
-                                            <div class="question-item">
-                                                <input type="text" placeholder="Question 1" class="question-input">
-                                                <input type="text" placeholder="Answer 1" class="answer-input">
-                                                <button type="button" class="btn btn-small btn-danger remove-question">
-                                                    <i class="fas fa-trash"></i>
-                                                </button>
-                                            </div>
-                                        </div>
+                                        <div id="questions-container"></div>
                                         <button type="button" id="add-question" class="btn btn-secondary btn-small">
                                             <i class="fas fa-plus"></i> Add Question
                                         </button>
